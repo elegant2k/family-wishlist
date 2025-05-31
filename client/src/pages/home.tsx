@@ -163,6 +163,14 @@ export default function Home({ user }: HomeProps) {
     }
   };
 
+  const copyInviteLink = () => {
+    if (familyGroup?.inviteCode) {
+      const inviteUrl = `${window.location.origin}/invite/${familyGroup.inviteCode}`;
+      navigator.clipboard.writeText(inviteUrl);
+      toast({ title: "Invitasjonslink kopiert!" });
+    }
+  };
+
   const filteredWishlists = familyWishlists.map(wishlist => ({
     ...wishlist,
     items: wishlist.items.filter(item => 
@@ -436,24 +444,42 @@ export default function Home({ user }: HomeProps) {
           <DialogHeader>
             <DialogTitle>Inviter familiemedlemmer</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-gray-600">
-              Del denne invitasjonskoden med familiemedlemmer slik at de kan bli med i gruppen:
-            </p>
-            <div className="flex items-center space-x-2">
-              <Input
-                value={familyGroup.inviteCode}
-                readOnly
-                className="font-mono text-lg text-center"
-              />
-              <Button onClick={copyInviteCode}>
-                <Code className="mr-2" size={16} />
-                Kopier
-              </Button>
+          <div className="space-y-6">
+            <div>
+              <h4 className="font-medium mb-2">Del link (enklest)</h4>
+              <p className="text-sm text-gray-600 mb-3">
+                Send denne linken til familiemedlemmer. De kan registrere seg direkte:
+              </p>
+              <div className="flex items-center space-x-2">
+                <Input
+                  value={`${window.location.origin}/invite/${familyGroup?.inviteCode}`}
+                  readOnly
+                  className="text-sm"
+                />
+                <Button onClick={copyInviteLink} variant="outline">
+                  <Share className="mr-2" size={16} />
+                  Del link
+                </Button>
+              </div>
             </div>
-            <p className="text-sm text-gray-500">
-              Koden kan brukes av alle som ønsker å bli med i familiegruppen din.
-            </p>
+            
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-2">Eller del kode</h4>
+              <p className="text-sm text-gray-600 mb-3">
+                Familiemedlemmer kan bruke denne koden på barn-innlogging:
+              </p>
+              <div className="flex items-center space-x-2">
+                <Input
+                  value={familyGroup?.inviteCode}
+                  readOnly
+                  className="font-mono text-lg text-center"
+                />
+                <Button onClick={copyInviteCode} variant="outline">
+                  <Code className="mr-2" size={16} />
+                  Kopier kode
+                </Button>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

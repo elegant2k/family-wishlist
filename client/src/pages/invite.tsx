@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Heart, Users, Gift } from "lucide-react";
+import { Heart, Users, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,42 +13,50 @@ import { auth } from "@/lib/auth";
 import { insertUserSchema } from "@shared/schema";
 import { z } from "zod";
 
-const loginSchema = z.object({
-  email: z.string().email("Ugyldig e-postadresse"),
-  password: z.string().min(1, "Passord er påkrevd"),
-});
-
-const childLoginSchema = z.object({
-  familyCode: z.string().min(1, "Familiekode er påkrevd"),
+const childRegisterSchema = z.object({
   name: z.string().min(1, "Navn er påkrevd"),
-  password: z.string().min(1, "Passord er påkrevd"),
-});
-
-const registerSchema = insertUserSchema.extend({
+  password: z.string().min(4, "Passord må være minst 4 tegn"),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passordene stemmer ikke overens",
   path: ["confirmPassword"],
 });
 
-type LoginData = z.infer<typeof loginSchema>;
-type ChildLoginData = z.infer<typeof childLoginSchema>;
-type RegisterData = z.infer<typeof registerSchema>;
+const adultRegisterSchema = insertUserSchema.extend({
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passordene stemmer ikke overens",
+  path: ["confirmPassword"],
+});
 
-export default function AuthPage() {
+type ChildRegisterData = z.infer<typeof childRegisterSchema>;
+type AdultRegisterData = z.infer<typeof adultRegisterSchema>;
+
+interface FamilyGroup {
+  id: number;
+  name: string;
+  inviteCode: string;
+  memberCount: number;
+}
+
+export default function InvitePage() {
+  const { inviteCode } = useParams<{ inviteCode: string }>();
   const [isLoading, setIsLoading] = useState(false);
+  const [familyGroup, setFamilyGroup] = useState<FamilyGroup | null>(null);
+  const [loadingFamily, setLoadingFamily] = useState(true);
   const { toast } = useToast();
 
-  const loginForm = useForm<LoginData>({
-    resolver: zodResolver(loginSchema),
+  const childForm = useForm<ChildRegisterData>({
+    resolver: zodResolver(childRegisterSchema),
     defaultValues: {
-      email: "",
+      name: "",
       password: "",
+      confirmPassword: "",
     },
   });
 
-  const registerForm = useForm<RegisterData>({
-    resolver: zodResolver(registerSchema),
+  const adultForm = useForm<AdultRegisterData>({
+    resolver: zodResolver(adultRegisterSchema),
     defaultValues: {
       name: "",
       email: "",
@@ -56,52 +65,43 @@ export default function AuthPage() {
     },
   });
 
-  const childLoginForm = useForm<ChildLoginData>({
-    resolver: zodResolver(childLoginSchema),
-    defaultValues: {
-      familyCode: "",
-      name: "",
-      password: "",
-    },
-  });
+  // Load family group info
+  useEffect(() => {
+    const fetchFamilyInfo = async () => {
+      if (!inviteCode) return;
+      
+      try {
+        const response = await fetch(`/api/family-groups/invite/${inviteCode}`);
+        if (response.ok) {
+          const data = await response.json();
+          setFamilyGroup(data);
+        } else {
+          toast({
+            title: "Ugyldig invitasjonskode",
+            description: "Denne invitasjonslinken er ikke gyldig eller har utløpt.",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "Kunne ikke laste familiegruppe",
+          description: "Noe gikk galt ved lasting av invitasjonen.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoadingFamily(false);
+      }
+    };
 
-  const handleLogin = async (data: LoginData) => {
+    fetchFamilyInfo();
+  }, [inviteCode, toast]);
+
+  const handleChildRegister = async (data: ChildRegisterData) => {
     setIsLoading(true);
     try {
-      await auth.login(data.email, data.password);
-      toast({ title: "Velkommen tilbake!" });
-    } catch (error: any) {
-      toast({
-        title: "Innlogging feilet",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleChildLogin = async (data: ChildLoginData) => {
-    setIsLoading(true);
-    try {
-      await auth.loginChild(data.familyCode, data.name, data.password);
-      toast({ title: "Velkommen tilbake!" });
-    } catch (error: any) {
-      toast({
-        title: "Innlogging feilet",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleRegister = async (data: RegisterData) => {
-    setIsLoading(true);
-    try {
-      await auth.register(data.name, data.email || "", data.password);
-      toast({ title: "Konto opprettet! Velkommen til FamilieØnsker!" });
+      // Register child with family code
+      await auth.register(data.name, "", data.password, true, inviteCode);
+      toast({ title: "Velkommen til familien!" });
     } catch (error: any) {
       toast({
         title: "Registrering feilet",
@@ -113,6 +113,62 @@ export default function AuthPage() {
     }
   };
 
+  const handleAdultRegister = async (data: AdultRegisterData) => {
+    setIsLoading(true);
+    try {
+      // Register adult and join family group
+      await auth.register(data.name, data.email || "", data.password);
+      // Join the family group
+      const response = await fetch('/api/family-groups/join', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...auth.getAuthHeaders()
+        },
+        body: JSON.stringify({ inviteCode }),
+      });
+      
+      if (!response.ok) throw new Error('Kunne ikke bli med i familiegruppen');
+      
+      toast({ title: "Velkommen til familien!" });
+    } catch (error: any) {
+      toast({
+        title: "Registrering feilet",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (loadingFamily) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-warm to-orange-50 flex items-center justify-center p-4">
+        <div className="text-center">
+          <Heart className="h-12 w-12 text-red-400 fill-current mx-auto mb-4 animate-pulse" />
+          <p className="text-gray-600">Laster invitasjon...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!familyGroup) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-warm to-orange-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="p-6 text-center">
+            <Heart className="h-12 w-12 text-red-400 fill-current mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Ugyldig invitasjon</h1>
+            <p className="text-gray-600">
+              Denne invitasjonslinken er ikke gyldig eller har utløpt.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-warm to-orange-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full space-y-8">
@@ -121,110 +177,38 @@ export default function AuthPage() {
           <div className="flex justify-center mb-4">
             <Heart className="h-12 w-12 text-red-400 fill-current" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">FamilieØnsker</h1>
-          <p className="mt-2 text-gray-600">Del ønskelister med familien din</p>
-        </div>
-
-        {/* Features */}
-        <div className="grid grid-cols-1 gap-4 text-center">
-          <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
+          <h1 className="text-3xl font-bold text-gray-900">Du er invitert!</h1>
+          <p className="mt-2 text-gray-600">
+            Bli med i familiegruppen <strong>{familyGroup.name}</strong>
+          </p>
+          <div className="flex items-center justify-center mt-3 space-x-2">
             <Users className="h-4 w-4 text-primary" />
-            <span>Opprett familiegrupper</span>
-          </div>
-          <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
-            <Gift className="h-4 w-4 text-secondary" />
-            <span>Koordiner gaver i hemmelighet</span>
+            <span className="text-sm text-gray-600">
+              {familyGroup.memberCount} medlemmer
+            </span>
           </div>
         </div>
 
-        {/* Auth Forms */}
+        {/* Registration Form */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-center">Kom i gang</CardTitle>
+            <CardTitle className="text-center">Opprett din konto</CardTitle>
             <CardDescription className="text-center">
-              Logg inn eller opprett en ny konto
+              Velg kontotype for å bli med i familien
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="login" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="login">Voksne</TabsTrigger>
+            <Tabs defaultValue="child" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="child">Barn</TabsTrigger>
-                <TabsTrigger value="register">Ny konto</TabsTrigger>
+                <TabsTrigger value="adult">Voksen</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="login">
-                <Form {...loginForm}>
-                  <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
-                    <FormField
-                      control={loginForm.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>E-post</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="email"
-                              placeholder="din@epost.no"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={loginForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Passord</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="password"
-                              placeholder="Ditt passord"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <Button
-                      type="submit"
-                      className="w-full"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? "Logger inn..." : "Logg inn"}
-                    </Button>
-                  </form>
-                </Form>
-              </TabsContent>
-
               <TabsContent value="child">
-                <Form {...childLoginForm}>
-                  <form onSubmit={childLoginForm.handleSubmit(handleChildLogin)} className="space-y-4">
+                <Form {...childForm}>
+                  <form onSubmit={childForm.handleSubmit(handleChildRegister)} className="space-y-4">
                     <FormField
-                      control={childLoginForm.control}
-                      name="familyCode"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Familiekode</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Familiens kode"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={childLoginForm.control}
+                      control={childForm.control}
                       name="name"
                       render={({ field }) => (
                         <FormItem>
@@ -241,74 +225,7 @@ export default function AuthPage() {
                     />
 
                     <FormField
-                      control={childLoginForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Passord</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="password"
-                              placeholder="Ditt passord"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <Button
-                      type="submit"
-                      className="w-full"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? "Logger inn..." : "Logg inn som barn"}
-                    </Button>
-                  </form>
-                </Form>
-              </TabsContent>
-
-              <TabsContent value="register">
-                <Form {...registerForm}>
-                  <form onSubmit={registerForm.handleSubmit(handleRegister)} className="space-y-4">
-                    <FormField
-                      control={registerForm.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Fullt navn</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Ditt fulle navn"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={registerForm.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>E-post</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="email"
-                              placeholder="din@epost.no"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={registerForm.control}
+                      control={childForm.control}
                       name="password"
                       render={({ field }) => (
                         <FormItem>
@@ -326,7 +243,7 @@ export default function AuthPage() {
                     />
 
                     <FormField
-                      control={registerForm.control}
+                      control={childForm.control}
                       name="confirmPassword"
                       render={({ field }) => (
                         <FormItem>
@@ -334,7 +251,7 @@ export default function AuthPage() {
                           <FormControl>
                             <Input
                               type="password"
-                              placeholder="Gjenta passordet"
+                              placeholder="Skriv passordet igjen"
                               {...field}
                             />
                           </FormControl>
@@ -348,7 +265,92 @@ export default function AuthPage() {
                       className="w-full"
                       disabled={isLoading}
                     >
-                      {isLoading ? "Oppretter konto..." : "Opprett konto"}
+                      {isLoading ? "Oppretter konto..." : "Bli med som barn"}
+                    </Button>
+                  </form>
+                </Form>
+              </TabsContent>
+
+              <TabsContent value="adult">
+                <Form {...adultForm}>
+                  <form onSubmit={adultForm.handleSubmit(handleAdultRegister)} className="space-y-4">
+                    <FormField
+                      control={adultForm.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Fullt navn</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Ditt fulle navn"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={adultForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>E-post</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="email"
+                              placeholder="din@epost.no"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={adultForm.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Passord</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="password"
+                              placeholder="Velg et passord"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={adultForm.control}
+                      name="confirmPassword"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Bekreft passord</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="password"
+                              placeholder="Skriv passordet igjen"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? "Oppretter konto..." : "Bli med som voksen"}
                     </Button>
                   </form>
                 </Form>

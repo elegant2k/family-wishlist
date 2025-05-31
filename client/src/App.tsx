@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { auth } from "@/lib/auth";
 import AuthPage from "@/pages/auth";
 import Home from "@/pages/home";
+import InvitePage from "@/pages/invite";
 import NotFound from "@/pages/not-found";
 
 interface User {
