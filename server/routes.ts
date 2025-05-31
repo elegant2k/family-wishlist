@@ -81,9 +81,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, password } = req.body;
       
+      if (!email) {
+        return res.status(400).json({ message: "E-postadresse er påkrevd" });
+      }
+      
       const user = await storage.getUserByEmail(email);
       if (!user || user.password !== password) {
-        return res.status(401).json({ message: "Invalid credentials" });
+        return res.status(401).json({ message: "Ugyldig innlogging" });
       }
 
       // Create session
@@ -91,14 +95,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sessionUser: SessionUser = {
         id: user.id,
         name: user.name,
-        email: user.email,
+        email: user.email || null,
         familyGroupId: user.familyGroupId
       };
       sessions.set(sessionId, sessionUser);
 
       res.json({ user: sessionUser, sessionId });
     } catch (error) {
-      res.status(400).json({ message: "Login failed", error });
+      res.status(400).json({ message: "Innlogging feilet", error });
+    }
+  });
+
+  // Family code login for children
+  app.post("/api/auth/login-child", async (req, res) => {
+    try {
+      const { familyCode, name, password } = req.body;
+      
+      if (!familyCode || !name) {
+        return res.status(400).json({ message: "Familiekode og navn er påkrevd" });
+      }
+      
+      const user = await storage.getUserByFamilyCode(familyCode, name);
+      if (!user || user.password !== password) {
+        return res.status(401).json({ message: "Ugyldig familiekode, navn eller passord" });
+      }
+
+      // Create session
+      const sessionId = Math.random().toString(36);
+      const sessionUser: SessionUser = {
+        id: user.id,
+        name: user.name,
+        email: user.email || null,
+        familyGroupId: user.familyGroupId
+      };
+      sessions.set(sessionId, sessionUser);
+
+      res.json({ user: sessionUser, sessionId });
+    } catch (error) {
+      res.status(400).json({ message: "Innlogging feilet", error });
     }
   });
 

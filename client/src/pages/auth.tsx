@@ -17,6 +17,12 @@ const loginSchema = z.object({
   password: z.string().min(1, "Passord er påkrevd"),
 });
 
+const childLoginSchema = z.object({
+  familyCode: z.string().min(1, "Familiekode er påkrevd"),
+  name: z.string().min(1, "Navn er påkrevd"),
+  password: z.string().min(1, "Passord er påkrevd"),
+});
+
 const registerSchema = insertUserSchema.extend({
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -25,6 +31,7 @@ const registerSchema = insertUserSchema.extend({
 });
 
 type LoginData = z.infer<typeof loginSchema>;
+type ChildLoginData = z.infer<typeof childLoginSchema>;
 type RegisterData = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
@@ -46,6 +53,15 @@ export default function AuthPage() {
       email: "",
       password: "",
       confirmPassword: "",
+    },
+  });
+
+  const childLoginForm = useForm<ChildLoginData>({
+    resolver: zodResolver(childLoginSchema),
+    defaultValues: {
+      familyCode: "",
+      name: "",
+      password: "",
     },
   });
 

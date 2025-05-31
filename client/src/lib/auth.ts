@@ -47,6 +47,25 @@ export const auth = {
     return user;
   },
 
+  loginChild: async (familyCode: string, name: string, password: string) => {
+    const response = await fetch('/api/auth/login-child', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ familyCode, name, password })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Login failed');
+    }
+
+    const { user, sessionId } = await response.json();
+    authState = { user, sessionId };
+    localStorage.setItem('sessionId', sessionId);
+    authListeners.forEach(listener => listener(authState));
+    return user;
+  },
+
   register: async (name: string, email: string, password: string) => {
     const response = await fetch('/api/auth/register', {
       method: 'POST',
