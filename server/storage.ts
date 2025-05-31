@@ -14,6 +14,8 @@ import {
   type SecretNote,
   type InsertSecretNote
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -214,4 +216,138 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DatabaseStorage implements IStorage {
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  async updateUserFamilyGroup(userId: number, familyGroupId: number): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ familyGroupId })
+      .where(eq(users.id, userId))
+      .returning();
+    return user || undefined;
+  }
+
+  async getFamilyGroup(id: number): Promise<FamilyGroup | undefined> {
+    const [group] = await db.select().from(familyGroups).where(eq(familyGroups.id, id));
+    return group || undefined;
+  }
+
+  async getFamilyGroupByInviteCode(inviteCode: string): Promise<FamilyGroup | undefined> {
+    const [group] = await db.select().from(familyGroups).where(eq(familyGroups.inviteCode, inviteCode));
+    return group || undefined;
+  }
+
+  async createFamilyGroup(group: InsertFamilyGroup & { inviteCode: string }): Promise<FamilyGroup> {
+    const [familyGroup] = await db
+      .insert(familyGroups)
+      .values(group)
+      .returning();
+    return familyGroup;
+  }
+
+  async getFamilyMembers(familyGroupId: number): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.familyGroupId, familyGroupId));
+  }
+
+  async getWishlistItems(userId: number): Promise<WishlistItem[]> {
+    return await db.select().from(wishlistItems)
+      .where(eq(wishlistItems.userId, userId))
+      .orderBy(desc(wishlistItems.createdAt));
+  }
+
+  async getWishlistItem(id: number): Promise<WishlistItem | undefined> {
+    const [item] = await db.select().from(wishlistItems).where(eq(wishlistItems.id, id));
+    return item || undefined;
+  }
+
+  async createWishlistItem(userId: number, item: InsertWishlistItem): Promise<WishlistItem> {
+    const [wishlistItem] = await db
+      .insert(wishlistItems)
+      .values({ ...item, userId })
+      .returning();
+    return wishlistItem;
+  }
+
+  async updateWishlistItem(id: number, updates: Partial<WishlistItem>): Promise<WishlistItem | undefined> {
+    const [item] = await db
+      .update(wishlistItems)
+      .set(updates)
+      .where(eq(wishlistItems.id, id))
+      .returning();
+    return item || undefined;
+  }
+
+  async deleteWishlistItem(id: number): Promise<boolean> {
+    const result = await db.delete(wishlistItems).where(eq(wishlistItems.id, id));
+    return (result.rowCount || 0) > 0;
+  }
+
+  async reserveWishlistItem(id: number, reservedByUserId: number): Promise<WishlistItem | undefined> {
+    const [item] = await db
+      .update(wishlistItems)
+      .set({ isReserved: true, reservedByUserId })
+      .where(eq(wishlistItems.id, id))
+      .returning();
+    return item || undefined;
+  }
+
+  async unreserveWishlistItem(id: number): Promise<WishlistItem | undefined> {
+    const [item] = await db
+      .update(wishlistItems)
+      .set({ isReserved: false, reservedByUserId: null })
+      .where(eq(wishlistItems.id, id))
+      .returning();
+    return item || undefined;
+  }
+
+  async createActivity(activity: { userId: number; familyGroupId: number; action: string; itemName?: string; targetUserId?: number }): Promise<Activity> {
+    const [activityRecord] = await db
+      .insert(activities)
+      .values({
+        ...activity,
+        itemName: activity.itemName || null,
+        targetUserId: activity.targetUserId || null
+      })
+      .returning();
+    return activityRecord;
+  }
+
+  async getFamilyActivities(familyGroupId: number, limit = 10): Promise<Activity[]> {
+    return await db.select().from(activities)
+      .where(eq(activities.familyGroupId, familyGroupId))
+      .orderBy(desc(activities.createdAt))
+      .limit(limit);
+  }
+
+  async createSecretNote(userId: number, note: InsertSecretNote): Promise<SecretNote> {
+    const [secretNote] = await db
+      .insert(secretNotes)
+      .values({ ...note, userId })
+      .returning();
+    return secretNote;
+  }
+
+  async getSecretNotes(wishlistItemId: number, userId: number): Promise<SecretNote[]> {
+    return await db.select().from(secretNotes)
+      .where(eq(secretNotes.wishlistItemId, wishlistItemId));
+  }
+}
+
+export const storage = new DatabaseStorage();
