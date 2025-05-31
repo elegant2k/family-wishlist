@@ -105,10 +105,14 @@ export default function Home({ user }: HomeProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/family-groups/current'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/wishlists/family'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
       queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
       toast({ title: "Familiegruppe opprettet!" });
       setCreateGroupModalOpen(false);
       setGroupName("");
+      // Force page refresh to show family dashboard
+      window.location.reload();
     },
     onError: (error: any) => {
       toast({
@@ -162,7 +166,7 @@ export default function Home({ user }: HomeProps) {
   const filteredWishlists = familyWishlists.map(wishlist => ({
     ...wishlist,
     items: wishlist.items.filter(item => 
-      !categoryFilter || item.category === categoryFilter
+      !categoryFilter || categoryFilter === 'all' || item.category === categoryFilter
     ).sort((a, b) => {
       switch (sortBy) {
         case 'priority':
@@ -375,7 +379,7 @@ export default function Home({ user }: HomeProps) {
                 <SelectValue placeholder="Alle kategorier" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Alle kategorier</SelectItem>
+                <SelectItem value="all">Alle kategorier</SelectItem>
                 <SelectItem value="clothes">Klær</SelectItem>
                 <SelectItem value="electronics">Elektronikk</SelectItem>
                 <SelectItem value="books">Bøker</SelectItem>
