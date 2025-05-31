@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { getAuthHeaders } from "./auth";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -12,9 +13,22 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const authHeaders = getAuthHeaders();
+  const headers = new Headers();
+  
+  // Add content type for data requests
+  if (data) {
+    headers.set("Content-Type", "application/json");
+  }
+  
+  // Add session header if it exists
+  if (authHeaders['X-Session-Id']) {
+    headers.set('X-Session-Id', authHeaders['X-Session-Id']);
+  }
+
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -29,7 +43,15 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    const authHeaders = getAuthHeaders();
+    const headers = new Headers();
+    
+    if (authHeaders['X-Session-Id']) {
+      headers.set('X-Session-Id', authHeaders['X-Session-Id']);
+    }
+
     const res = await fetch(queryKey[0] as string, {
+      headers,
       credentials: "include",
     });
 
