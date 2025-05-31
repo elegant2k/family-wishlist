@@ -63,6 +63,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={() => <Home user={user} />} />
+      <Route path="/invite/:inviteCode" component={InvitePage} />
       <Route component={NotFound} />
     </Switch>
   );
