@@ -5,9 +5,11 @@ import { z } from "zod";
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
+  email: text("email"), // Now optional for children
   password: text("password").notNull(),
   familyGroupId: integer("family_group_id"),
+  isChild: boolean("is_child").default(false),
+  familyCode: text("family_code"), // Used for child logins
 });
 
 export const familyGroups = pgTable("family_groups", {
@@ -54,6 +56,10 @@ export const insertUserSchema = createInsertSchema(users).pick({
   name: true,
   email: true,
   password: true,
+  isChild: true,
+  familyCode: true,
+}).extend({
+  email: z.string().email().optional(),
 });
 
 export const insertFamilyGroupSchema = createInsertSchema(familyGroups).pick({

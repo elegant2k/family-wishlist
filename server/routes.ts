@@ -51,10 +51,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userData = insertUserSchema.parse(req.body);
       
-      // Check if user already exists
-      const existingUser = await storage.getUserByEmail(userData.email);
-      if (existingUser) {
-        return res.status(400).json({ message: "User already exists" });
+      // Check if user already exists (only if email provided)
+      if (userData.email) {
+        const existingUser = await storage.getUserByEmail(userData.email);
+        if (existingUser) {
+          return res.status(400).json({ message: "Bruker med denne e-postadressen finnes allerede" });
+        }
       }
 
       const user = await storage.createUser(userData);
@@ -64,14 +66,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sessionUser: SessionUser = {
         id: user.id,
         name: user.name,
-        email: user.email,
+        email: user.email || null,
         familyGroupId: user.familyGroupId
       };
       sessions.set(sessionId, sessionUser);
 
       res.json({ user: sessionUser, sessionId });
     } catch (error) {
-      res.status(400).json({ message: "Invalid data", error });
+      res.status(400).json({ message: "Ugyldig data", error });
     }
   });
 
